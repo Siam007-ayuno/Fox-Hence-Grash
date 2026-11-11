@@ -1,0 +1,2170 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>River Crossing 3D — Interactive BFS & State-Space Laboratory</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js r128 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- OrbitControls -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <!-- GSAP Core -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <!-- FontAwesome 6 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Fonts: Instrument Serif, Plus Jakarta Sans, JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+            serif: ['Instrument Serif', 'serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            obsidian: '#090A0F',
+            carbon: '#12131A',
+            elevated: '#181922',
+            borderSubtle: 'rgba(255, 255, 255, 0.08)',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #090A0F;
+      color: #F3F4F6;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    canvas#webgl-canvas {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      touch-action: none;
+    }
+    .studio-panel {
+      background: rgba(18, 19, 26, 0.84);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7), inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+    }
+    .studio-card {
+      background: #181922;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+    }
+    .studio-btn {
+      background: #181922;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+      transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .studio-btn:hover:not(:disabled) {
+      background: #222430;
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+    .studio-btn:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+    .btn-amber-primary {
+      background: linear-gradient(180deg, #F59E0B 0%, #D97706 100%);
+      color: #090A0F;
+      border: 1px solid rgba(254, 243, 199, 0.35);
+      box-shadow: 0 4px 16px rgba(245, 158, 11, 0.25), inset 0 1px 0 0 rgba(255, 255, 255, 0.35);
+      transition: all 0.15s ease;
+    }
+    .btn-amber-primary:hover:not(:disabled) {
+      background: linear-gradient(180deg, #FBBF24 0%, #EA580C 100%);
+      box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4), inset 0 1px 0 0 rgba(255, 255, 255, 0.45);
+    }
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090A0F;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #2E303E;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #4B4E63;
+    }
+    @keyframes pulseRing {
+      0%, 100% { r: 12px; opacity: 0.9; }
+      50% { r: 16px; opacity: 0.35; }
+    }
+    .svg-pulse {
+      animation: pulseRing 1.8s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="h-screen w-screen overflow-hidden select-none">
+
+  <!-- 3D WebGL Viewport -->
+  <canvas id="webgl-canvas"></canvas>
+
+  <!-- 3D Hover Tooltip -->
+  <div id="hover-label" class="fixed pointer-events-none z-20 hidden px-2.5 py-1 rounded-[6px] studio-panel text-[11px] font-mono text-gray-200 tracking-tight shadow-lg">
+    Click to interact
+  </div>
+
+  <!-- Top Tactile Studio Header Bar -->
+  <header class="fixed top-3 left-3 right-3 z-30 flex items-center justify-between pointer-events-none gap-2">
+    <!-- Brand & Puzzle Identity -->
+    <div class="studio-panel px-3.5 py-2 rounded-[8px] flex items-center gap-3 pointer-events-auto">
+      <div class="w-8 h-8 rounded-[6px] bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 text-sm">
+        <i class="fa-solid fa-compass-drafting"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-sm font-semibold tracking-tight text-gray-100">River Crossing 3D</h1>
+          <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded-[4px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">BFS Solver Lab</span>
+        </div>
+        <p class="text-[11px] text-gray-400 hidden sm:block">Alcuin's Constraint Satisfaction &bull; 16-State Graph</p>
+      </div>
+    </div>
+
+    <!-- Center / Right Telemetry & View Controls -->
+    <div class="flex items-center gap-2 pointer-events-auto">
+      <!-- Live 4-Bit State Vector Readout -->
+      <div class="studio-panel px-3 py-1.5 rounded-[8px] hidden md:flex items-center gap-2.5">
+        <span class="text-[10px] font-mono uppercase tracking-wider text-gray-400">State (F,X,G,B)</span>
+        <div class="flex items-center gap-1 font-mono text-xs font-semibold tabular-nums bg-obsidian px-2 py-0.5 rounded-[5px] border border-white/10">
+          <span id="hud-vec-str" class="text-amber-400">(L, L, L, L)</span>
+          <span class="text-gray-600">|</span>
+          <span id="hud-vec-bin" class="text-emerald-400">0000₂</span>
+        </div>
+      </div>
+
+      <!-- Move Counter -->
+      <div class="studio-panel px-3 py-1.5 rounded-[8px] flex items-center gap-2">
+        <span class="text-[10px] font-mono uppercase tracking-wider text-gray-400">Moves</span>
+        <span id="hud-moves" class="font-mono text-xs font-bold tabular-nums text-gray-100 bg-obsidian px-2 py-0.5 rounded-[5px] border border-white/10">0 / 7</span>
+      </div>
+
+      <!-- Camera Angle Presets -->
+      <div class="studio-panel p-1 rounded-[8px] hidden sm:flex items-center gap-1">
+        <button onclick="setCameraView('cinematic')" id="cam-cinematic" class="px-2 py-1 rounded-[5px] text-[11px] font-medium bg-white/10 text-white transition-colors" title="Isometric Perspective">
+          Iso
+        </button>
+        <button onclick="setCameraView('side')" id="cam-side" class="px-2 py-1 rounded-[5px] text-[11px] font-medium text-gray-400 hover:text-white transition-colors" title="Shoreline Level">
+          Shore
+        </button>
+        <button onclick="setCameraView('top')" id="cam-top" class="px-2 py-1 rounded-[5px] text-[11px] font-medium text-gray-400 hover:text-white transition-colors" title="Overhead Map">
+          Top
+        </button>
+      </div>
+
+      <!-- Lighting Mode Toggle -->
+      <button onclick="toggleTimeOfDay()" class="studio-panel w-8 h-8 rounded-[8px] flex items-center justify-center text-amber-400 hover:text-amber-300 transition-colors" title="Toggle Golden Hour / Moonlight">
+        <i id="env-time-icon" class="fa-solid fa-sun text-xs"></i>
+      </button>
+
+      <!-- Sound Synth Toggle -->
+      <button onclick="toggleAudio()" class="studio-panel w-8 h-8 rounded-[8px] flex items-center justify-center text-gray-300 hover:text-white transition-colors" title="Toggle Procedural Sound Synthesis">
+        <i id="sound-icon" class="fa-solid fa-volume-high text-xs"></i>
+      </button>
+
+      <!-- Toggle Lab Drawer Button (Mobile/Tablet or Collapsed State) -->
+      <button onclick="toggleLabPanel()" class="studio-panel px-3 py-1.5 rounded-[8px] text-xs font-medium text-amber-400 hover:text-amber-300 border-amber-500/30 flex items-center gap-1.5">
+        <i class="fa-solid fa-Sliders"></i>
+        <span class="font-mono text-[11px]" id="lab-toggle-text">Hide Lab</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Bottom-Left Manual Simulation Control Dock -->
+  <div id="manual-dock" class="fixed bottom-4 left-4 z-30 w-[calc(100vw-2rem)] sm:w-[430px] pointer-events-none flex flex-col gap-2">
+    <!-- Status Toast Banner -->
+    <div id="status-banner" class="studio-panel px-3 py-2 rounded-[8px] flex items-center justify-between text-xs border-l-2 border-l-emerald-500 pointer-events-auto">
+      <div class="flex items-center gap-2">
+        <span id="status-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span id="status-text" class="text-gray-200 font-medium">Click a character in 3D or use dock controls to board.</span>
+      </div>
+      <span id="boat-shore-badge" class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-obsidian text-gray-400 border border-white/5">West Bank (L)</span>
+    </div>
+
+    <!-- Tactile Control Deck -->
+    <div class="studio-panel p-3 rounded-[8px] pointer-events-auto flex flex-col gap-2.5">
+      <div class="flex items-center justify-between text-[11px] font-mono text-gray-400 uppercase tracking-wider">
+        <span>Passenger Manifest (Max 1 + Farmer)</span>
+        <span id="cargo-readout" class="text-amber-400">Boat: Empty</span>
+      </div>
+
+      <!-- 3 Entity Boarding Buttons -->
+      <div class="grid grid-cols-3 gap-2">
+        <button id="btn-fox" onclick="toggleItemBoarding('fox')" class="studio-btn p-2 rounded-[6px] flex flex-col items-start gap-1 text-left group">
+          <div class="flex items-center justify-between w-full">
+            <span class="text-xs font-semibold text-gray-100 group-hover:text-amber-400 transition-colors">Fox (X)</span>
+            <span id="badge-fox" class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-obsidian text-gray-400 border border-white/5">L</span>
+          </div>
+          <span class="text-[10px] text-gray-400">Eats Goose</span>
+        </button>
+
+        <button id="btn-goose" onclick="toggleItemBoarding('goose')" class="studio-btn p-2 rounded-[6px] flex flex-col items-start gap-1 text-left group">
+          <div class="flex items-center justify-between w-full">
+            <span class="text-xs font-semibold text-gray-100 group-hover:text-amber-400 transition-colors">Goose (G)</span>
+            <span id="badge-goose" class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-obsidian text-gray-400 border border-white/5">L</span>
+          </div>
+          <span class="text-[10px] text-gray-400">Critical Pivot</span>
+        </button>
+
+        <button id="btn-beans" onclick="toggleItemBoarding('beans')" class="studio-btn p-2 rounded-[6px] flex flex-col items-start gap-1 text-left group">
+          <div class="flex items-center justify-between w-full">
+            <span class="text-xs font-semibold text-gray-100 group-hover:text-amber-400 transition-colors">Beans (B)</span>
+            <span id="badge-beans" class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-obsidian text-gray-400 border border-white/5">L</span>
+          </div>
+          <span class="text-[10px] text-gray-400">Eaten by Goose</span>
+        </button>
+      </div>
+
+      <!-- Primary Physical Rowing & History Actions -->
+      <div class="flex items-center gap-2 pt-0.5">
+        <button id="btn-undo" onclick="undoMove()" disabled class="studio-btn px-3 py-2.5 rounded-[6px] text-xs font-medium text-gray-300 disabled:opacity-35 disabled:cursor-not-allowed flex items-center gap-1.5" title="Undo Last Crossing">
+          <i class="fa-solid fa-rotate-left"></i>
+          <span>Undo</span>
+        </button>
+
+        <button id="btn-row" onclick="rowBoatAcross()" class="flex-1 py-2.5 px-4 rounded-[6px] btn-amber-primary font-semibold text-xs tracking-wide flex items-center justify-center gap-2">
+          <i id="row-dir-icon" class="fa-solid fa-arrow-right"></i>
+          <span id="row-btn-label">Row to East Bank (R)</span>
+        </button>
+
+        <button onclick="resetPuzzle()" class="studio-btn px-3 py-2.5 rounded-[6px] text-xs font-medium text-gray-300 hover:text-rose-400 flex items-center gap-1.5" title="Reset Simulation">
+          <i class="fa-solid fa-arrow-rotate-right"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right-Hand Algorithm & State-Space Laboratory Panel -->
+  <aside id="lab-panel" class="fixed top-16 bottom-4 right-3 z-30 w-[calc(100vw-1.5rem)] sm:w-[430px] studio-panel rounded-[8px] flex flex-col overflow-hidden transition-transform duration-300 ease-out">
+    <!-- Lab Header & Solver Controls -->
+    <div class="p-3.5 border-b border-white/10 flex flex-col gap-3 bg-obsidian/50">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-xs font-mono uppercase tracking-wider text-amber-400 font-semibold">BFS Algorithm Laboratory</h2>
+          <p class="text-[11px] text-gray-400">Interactive Step-by-Step Solver &amp; State Graph</p>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button id="btn-step-solve" onclick="algoNextStep()" class="studio-btn px-2.5 py-1.5 rounded-[6px] text-[11px] font-mono font-medium text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10 flex items-center gap-1.5">
+            <i class="fa-solid fa-forward-step"></i> Next Step
+          </button>
+          <button id="btn-auto-solve" onclick="toggleAutoSolver()" class="btn-amber-primary px-2.5 py-1.5 rounded-[6px] text-[11px] font-mono font-semibold flex items-center gap-1.5">
+            <i id="autosolve-icon" class="fa-solid fa-play text-[10px]"></i>
+            <span id="autosolve-label">Auto-Solve</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Segmented Navigation Tabs -->
+      <div class="grid grid-cols-3 gap-1 p-1 bg-obsidian rounded-[6px] border border-white/5 text-[11px] font-medium">
+        <button onclick="switchLabTab('walkthrough')" id="tab-btn-walkthrough" class="py-1.5 rounded-[4px] bg-elevated text-white shadow-sm transition-all">
+          1. All 7 Steps
+        </button>
+        <button onclick="switchLabTab('graph')" id="tab-btn-graph" class="py-1.5 rounded-[4px] text-gray-400 hover:text-gray-200 transition-all">
+          2. 16-State DAG
+        </button>
+        <button onclick="switchLabTab('queue')" id="tab-btn-queue" class="py-1.5 rounded-[4px] text-gray-400 hover:text-gray-200 transition-all">
+          3. BFS Queue
+        </button>
+      </div>
+    </div>
+
+    <!-- TAB 1: Interactive 7-Step Walkthrough & Explanations -->
+    <div id="tab-walkthrough" class="flex-1 overflow-y-auto p-3.5 space-y-3">
+      <!-- Current State Reasoning Card -->
+      <div class="studio-card p-3 rounded-[6px] border-l-2 border-l-amber-400 space-y-1.5">
+        <div class="flex items-center justify-between">
+          <span id="explain-step-badge" class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+            Step 0 / Initial State
+          </span>
+          <span id="explain-vector" class="text-[11px] font-mono text-gray-400">(L, L, L, L)</span>
+        </div>
+        <h3 id="explain-title" class="text-xs font-semibold text-gray-100">All Entities on West Bank</h3>
+        <p id="explain-body" class="text-[11px] text-gray-300 leading-relaxed">
+          The Farmer must transport the Fox, Goose, and Beans to the East Bank (R). Because the Goose is involved in both hazard rules (Fox eats Goose; Goose eats Beans), <strong class="text-emerald-400">taking the Goose across first</strong> is the only safe opening move.
+        </p>
+      </div>
+
+      <!-- Path Branch Selector (Fox-First vs Beans-First Symmetric Path) -->
+      <div class="flex items-center justify-between px-1">
+        <span class="text-[10px] font-mono uppercase tracking-wider text-gray-400">Optimal Path Branch</span>
+        <div class="flex items-center gap-1 text-[10px] font-mono">
+          <button onclick="setSolutionBranch('A')" id="branch-a-btn" class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+            Branch A (Fox Step 3)
+          </button>
+          <button onclick="setSolutionBranch('B')" id="branch-b-btn" class="px-2 py-0.5 rounded bg-obsidian text-gray-400 border border-white/10 hover:text-gray-200">
+            Branch B (Beans Step 3)
+          </button>
+        </div>
+      </div>
+
+      <!-- Interactive Timeline List of All Steps (Click any step to jump/animate) -->
+      <div id="steps-timeline" class="space-y-1.5"></div>
+    </div>
+
+    <!-- TAB 2: 16-State Space DAG Visualizer -->
+    <div id="tab-graph" class="hidden flex-1 overflow-y-auto p-3.5 space-y-3">
+      <div class="studio-card p-3 rounded-[6px] space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-mono font-semibold text-gray-200">Complete $2^4 = 16$ State-Space Topology</span>
+          <span class="text-[10px] font-mono text-emerald-400">10 Valid &bull; 6 Pruned</span>
+        </div>
+        <p class="text-[11px] text-gray-400 leading-relaxed">
+          Every node represents a 4-tuple <code class="text-gray-200">(Farmer, Fox, Goose, Beans)</code>. Click any valid emerald node to jump the 3D simulation directly to that state.
+        </p>
+
+        <!-- Interactive SVG State Graph -->
+        <div class="bg-obsidian rounded-[6px] border border-white/5 p-2">
+          <svg id="dag-svg" viewBox="0 0 380 420" class="w-full h-[310px]"></svg>
+        </div>
+
+        <!-- Legend -->
+        <div class="grid grid-cols-3 gap-2 pt-1 text-[10px] font-mono text-gray-400">
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span> Active State
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> Safe State (10)
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-rose-500/60 inline-block"></span> Conflict (6)
+          </div>
+        </div>
+      </div>
+
+      <!-- The Step 4 Backward Paradox Callout -->
+      <div class="studio-card p-3 rounded-[6px] border-l-2 border-l-emerald-400 space-y-1">
+        <div class="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+          <i class="fa-solid fa-code-branch"></i> Why Step 4 Rows the Goose Backward
+        </div>
+        <p class="text-[11px] text-gray-300 leading-relaxed">
+          At depth 3, the graph splits into a diamond: <code class="text-amber-300">(R,R,R,L)</code> or <code class="text-amber-300">(R,L,R,R)</code>. A greedy heuristic refuses to bring an item back from the goal shore. BFS discovers that returning the Goose to the West Bank <code class="text-emerald-300">(L,R,L,L)</code> is the unique non-conflict bridge to depth 4.
+        </p>
+      </div>
+    </div>
+
+    <!-- TAB 3: Live BFS Queue, Visited Set & Boolean Predicates -->
+    <div id="tab-queue" class="hidden flex-1 overflow-y-auto p-3.5 space-y-3 font-mono">
+      <!-- Safety Predicate Evaluator -->
+      <div class="studio-card p-3 rounded-[6px] space-y-2">
+        <div class="text-[11px] font-semibold text-gray-200 flex items-center justify-between">
+          <span>Boolean Constraint Evaluator</span>
+          <span id="pred-overall" class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">VALID</span>
+        </div>
+        <div class="bg-obsidian p-2.5 rounded-[5px] border border-white/5 text-[11px] space-y-1.5">
+          <div class="flex items-center justify-between">
+            <span class="text-gray-400">Predator Hazard: (X == G) &and; (F &ne; G)</span>
+            <span id="pred-fox-goose" class="text-emerald-400">FALSE (Safe)</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-gray-400">Forage Hazard: (G == B) &and; (F &ne; G)</span>
+            <span id="pred-goose-beans" class="text-emerald-400">FALSE (Safe)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Neighbor Transitions from Current State -->
+      <div class="studio-card p-3 rounded-[6px] space-y-2">
+        <div class="text-[11px] font-semibold text-gray-200">Candidate Transitions from Current State</div>
+        <div id="candidate-transitions" class="space-y-1.5 text-[11px]"></div>
+      </div>
+
+      <!-- FIFO Queue & Visited Set Trace -->
+      <div class="studio-card p-3 rounded-[6px] space-y-2">
+        <div class="text-[11px] font-semibold text-gray-200">BFS Layer Exploration Trace</div>
+        <p class="text-[10px] font-sans text-gray-400">
+          BFS explores states in FIFO order by distance $d$ from <code class="text-gray-200">(L,L,L,L)</code>, guaranteeing the shortest 7-edge path:
+        </p>
+        <div id="bfs-layer-trace" class="space-y-1.5 text-[10px]"></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Conflict / Constraint Violation Modal -->
+  <div id="conflict-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="studio-panel max-w-md w-full p-6 rounded-[8px] border border-rose-500/40 space-y-4">
+      <div class="flex items-start gap-3.5">
+        <div class="w-10 h-10 rounded-[6px] bg-rose-500/15 border border-rose-500/40 flex items-center justify-center text-rose-400 text-lg shrink-0">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <div class="space-y-1">
+          <span class="text-[10px] font-mono uppercase tracking-wider text-rose-400">Constraint Violation &bull; Pruned State</span>
+          <h3 id="conflict-title" class="text-2xl font-serif text-white tracking-wide">Fox Devoured the Goose</h3>
+          <p id="conflict-desc" class="text-xs text-gray-300 leading-relaxed">
+            The Farmer rowed across, leaving the Fox and Goose unsupervised on the bank.
+          </p>
+        </div>
+      </div>
+
+      <div class="bg-obsidian p-3 rounded-[6px] border border-rose-500/20 font-mono text-[11px] text-rose-300 flex items-center justify-between">
+        <span>Failed State Vector:</span>
+        <span id="conflict-vector-code" class="font-bold">(R, L, L, R) &rarr; PRUNED</span>
+      </div>
+
+      <div class="flex items-center gap-2.5 pt-1">
+        <button onclick="undoMove(); closeConflictModal();" class="flex-1 py-2.5 px-4 rounded-[6px] btn-amber-primary font-semibold text-xs flex items-center justify-center gap-2">
+          <i class="fa-solid fa-rotate-left"></i> Undo Invalid Crossing
+        </button>
+        <button onclick="resetPuzzle(); closeConflictModal();" class="studio-btn py-2.5 px-4 rounded-[6px] text-xs font-medium text-gray-300 hover:text-white">
+          Reset
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Victory Celebration Modal -->
+  <div id="victory-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="studio-panel max-w-md w-full p-6 rounded-[8px] border border-emerald-500/40 space-y-4">
+      <div class="flex items-start gap-3.5">
+        <div class="w-10 h-10 rounded-[6px] bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center text-emerald-400 text-lg shrink-0">
+          <i class="fa-solid fa-check-double"></i>
+        </div>
+        <div class="space-y-1">
+          <span class="text-[10px] font-mono uppercase tracking-wider text-emerald-400">Goal State Reached &bull; (R, R, R, R)</span>
+          <h3 class="text-2xl font-serif text-white tracking-wide">River Crossed Safely</h3>
+          <p class="text-xs text-gray-300 leading-relaxed">
+            All four entities—Farmer, Fox, Goose, and Beans—have arrived safely on the East Bank without a single constraint violation.
+          </p>
+        </div>
+      </div>
+
+      <div class="bg-obsidian p-3.5 rounded-[6px] border border-white/10 space-y-2 font-mono text-xs">
+        <div class="flex items-center justify-between">
+          <span class="text-gray-400">Total River Crossings:</span>
+          <span id="victory-moves-count" class="text-emerald-400 font-bold">7 Moves</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-gray-400">BFS Theoretical Minimum:</span>
+          <span class="text-amber-400 font-bold">7 Moves</span>
+        </div>
+        <div id="victory-efficiency-note" class="text-[11px] text-gray-300 pt-1 border-t border-white/5 font-sans">
+          Optimal shortest path achieved!
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2.5 pt-1">
+        <button onclick="closeVictoryModal(); switchLabTab('graph');" class="flex-1 py-2.5 px-4 rounded-[6px] studio-btn text-emerald-400 border-emerald-500/30 font-semibold text-xs flex items-center justify-center gap-2">
+          <i class="fa-solid fa-diagram-project"></i> Inspect 16-State DAG
+        </button>
+        <button onclick="closeVictoryModal(); resetPuzzle();" class="flex-1 py-2.5 px-4 rounded-[6px] btn-amber-primary font-semibold text-xs">
+          Play Again
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ============================================================================
+       1. STATE-SPACE MODEL & BFS ALGORITHM DATA
+       ============================================================================ */
+    const gameState = {
+      farmerBank: 'L',    // 'L' (West) | 'R' (East)
+      boatCargo: null,    // null | 'fox' | 'goose' | 'beans'
+      positions: {
+        fox: 'L',         // 'L' | 'R' | 'boat'
+        goose: 'L',
+        beans: 'L'
+      },
+      movesCount: 0,
+      history: [],
+      isRowing: false,
+      gameOver: false,
+      autoSolveTimer: null,
+      activeBranch: 'A'   // 'A' (Fox at Step 3) | 'B' (Beans at Step 3)
+    };
+
+    // Complete 7-Step Optimal Walkthroughs (Both Symmetric Branches)
+    const SOLUTION_PATHS = {
+      A: [
+        {
+          step: 0, state: ['L','L','L','L'], cargo: null, action: 'Initial Configuration',
+          title: 'Step 0: All Entities on West Bank (L,L,L,L)',
+          desc: 'If the Farmer takes the Fox or Beans first, the Goose is left unsupervised with the remaining item and a conflict occurs immediately. Thus, the Goose is the only valid first passenger.'
+        },
+        {
+          step: 1, state: ['R','L','R','L'], cargo: 'goose', action: 'Row Goose to East Bank (R)',
+          title: 'Step 1: Farmer Rows Goose East → (R,L,R,L)',
+          desc: 'The Fox and Beans are left together on the West Bank. Since foxes do not eat beans, this state satisfies all safety constraints.'
+        },
+        {
+          step: 2, state: ['L','L','R','L'], cargo: null, action: 'Farmer Returns Alone to West Bank (L)',
+          title: 'Step 2: Farmer Returns West Alone → (L,L,R,L)',
+          desc: 'The Goose remains safely isolated on the East Bank while the Farmer returns to fetch the next item (here the graph bifurcates into two symmetric branches).'
+        },
+        {
+          step: 3, state: ['R','R','R','L'], cargo: 'fox', action: 'Row Fox to East Bank (R)',
+          title: 'Step 3: Farmer Rows Fox East → (R,R,R,L)',
+          desc: 'The Fox and Goose are now both on the East Bank with the Farmer. However, the Farmer cannot return alone now or the Fox will eat the Goose!'
+        },
+        {
+          step: 4, state: ['L','R','L','L'], cargo: 'goose', action: 'Row Goose BACK to West Bank (L)',
+          title: 'Step 4 (The Paradox): Return Goose West → (L,R,L,L)',
+          desc: 'Crucial non-greedy step! To separate the Fox and Goose, the Farmer loads the Goose back into the boat and rows West, leaving the Fox isolated on the East Bank.'
+        },
+        {
+          step: 5, state: ['R','R','L','R'], cargo: 'beans', action: 'Leave Goose, Row Beans to East Bank (R)',
+          title: 'Step 5: Farmer Rows Beans East → (R,R,L,R)',
+          desc: 'The Farmer unloads the Goose on the West Bank and brings the Beans across to join the Fox on the East Bank. Fox and Beans coexist safely.'
+        },
+        {
+          step: 6, state: ['L','R','L','R'], cargo: null, action: 'Farmer Returns Alone to West Bank (L)',
+          title: 'Step 6: Farmer Returns West Alone → (L,R,L,R)',
+          desc: 'Leaving the Fox and Beans unsupervised on the East Bank, the Farmer rows back to the West Bank to pick up the Goose one final time.'
+        },
+        {
+          step: 7, state: ['R','R','R','R'], cargo: 'goose', action: 'Row Goose to East Bank (Goal)',
+          title: 'Step 7: Final Crossing with Goose → (R,R,R,R)',
+          desc: 'The Farmer and Goose arrive on the East Bank. All four entities reach (R,R,R,R) in the minimum possible 7 crossings!'
+        }
+      ],
+      B: [
+        {
+          step: 0, state: ['L','L','L','L'], cargo: null, action: 'Initial Configuration',
+          title: 'Step 0: All Entities on West Bank (L,L,L,L)',
+          desc: 'Symmetric Branch B: Just like Branch A, the Farmer must first isolate the Goose from both the Fox and the Beans.'
+        },
+        {
+          step: 1, state: ['R','L','R','L'], cargo: 'goose', action: 'Row Goose to East Bank (R)',
+          title: 'Step 1: Farmer Rows Goose East → (R,L,R,L)',
+          desc: 'Goose is taken to the East Bank, leaving Fox and Beans safely together on the West Bank.'
+        },
+        {
+          step: 2, state: ['L','L','R','L'], cargo: null, action: 'Farmer Returns Alone to West Bank (L)',
+          title: 'Step 2: Farmer Returns West Alone → (L,L,R,L)',
+          desc: 'At State (L,L,R,L), Branch B chooses to transport the Sack of Beans first instead of the Fox.'
+        },
+        {
+          step: 3, state: ['R','L','R','R'], cargo: 'beans', action: 'Row Beans to East Bank (R)',
+          title: 'Step 3 (Branch B): Farmer Rows Beans East → (R,L,R,R)',
+          desc: 'Goose and Beans are now on the East Bank. The Farmer cannot leave them alone together!'
+        },
+        {
+          step: 4, state: ['L','L','L','R'], cargo: 'goose', action: 'Row Goose BACK to West Bank (L)',
+          title: 'Step 4 (The Paradox): Return Goose West → (L,L,L,R)',
+          desc: 'The Farmer brings the Goose back to the West Bank, leaving the Beans safely on the East Bank.'
+        },
+        {
+          step: 5, state: ['R','R','L','R'], cargo: 'fox', action: 'Leave Goose, Row Fox to East Bank (R)',
+          title: 'Step 5: Farmer Rows Fox East → (R,R,L,R)',
+          desc: 'The Farmer leaves the Goose on the West Bank and transports the Fox to the East Bank to join the Beans. Both branches now converge!'
+        },
+        {
+          step: 6, state: ['L','R','L','R'], cargo: null, action: 'Farmer Returns Alone to West Bank (L)',
+          title: 'Step 6: Farmer Returns West Alone → (L,R,L,R)',
+          desc: 'Fox and Beans remain safely on the East Bank while the Farmer returns West for the Goose.'
+        },
+        {
+          step: 7, state: ['R','R','R','R'], cargo: 'goose', action: 'Row Goose to East Bank (Goal)',
+          title: 'Step 7: Final Crossing with Goose → (R,R,R,R)',
+          desc: 'All entities safely reach the East Bank in 7 optimal moves!'
+        }
+      ]
+    };
+
+    // Complete 16-State Space Nodes for SVG DAG Visualization
+    const DAG_NODES = [
+      // Safe States (10)
+      { id: 'LLLL', label: 'LLLL', x: 190, y: 28,  safe: true,  depth: 0 },
+      { id: 'RLRL', label: 'RLRL', x: 190, y: 82,  safe: true,  depth: 1 },
+      { id: 'LLRL', label: 'LLRL', x: 190, y: 136, safe: true,  depth: 2 },
+      { id: 'RRRL', label: 'RRRL', x: 105, y: 190, safe: true,  depth: 3 },
+      { id: 'RLRR', label: 'RLRR', x: 275, y: 190, safe: true,  depth: 3 },
+      { id: 'LRLL', label: 'LRLL', x: 105, y: 246, safe: true,  depth: 4 },
+      { id: 'LLLR', label: 'LLLR', x: 275, y: 246, safe: true,  depth: 4 },
+      { id: 'RRLR', label: 'RRLR', x: 190, y: 300, safe: true,  depth: 5 },
+      { id: 'LRLR', label: 'LRLR', x: 190, y: 352, safe: true,  depth: 6 },
+      { id: 'RRRR', label: 'RRRR', x: 190, y: 400, safe: true,  depth: 7 },
+      // Pruned / Invalid Conflict States (6)
+      { id: 'RLLL', label: 'RLLL', x: 52,  y: 62,  safe: false, reason: 'X+G & G+B' },
+      { id: 'RRLL', label: 'RRLL', x: 52,  y: 112, safe: false, reason: 'G+B on L' },
+      { id: 'RLLR', label: 'RLLR', x: 328, y: 112, safe: false, reason: 'X+G on L' },
+      { id: 'LRRL', label: 'LRRL', x: 32,  y: 218, safe: false, reason: 'X+G on R' },
+      { id: 'LLRR', label: 'LLRR', x: 348, y: 218, safe: false, reason: 'G+B on R' },
+      { id: 'LRRR', label: 'LRRR', x: 328, y: 332, safe: false, reason: 'X+G & G+B' }
+    ];
+
+    const DAG_EDGES = [
+      // Optimal Spine & Diamond Edges
+      ['LLLL', 'RLRL', true],
+      ['RLRL', 'LLRL', true],
+      ['LLRL', 'RRRL', true],
+      ['LLRL', 'RLRR', true],
+      ['RRRL', 'LRLL', true],
+      ['RLRR', 'LLLR', true],
+      ['LRLL', 'RRLR', true],
+      ['LLLR', 'RRLR', true],
+      ['RRLR', 'LRLR', true],
+      ['LRLR', 'RRRR', true],
+      // Pruned Hazard Edges
+      ['LLLL', 'RLLL', false],
+      ['LLLL', 'RRLL', false],
+      ['LLLL', 'RLLR', false],
+      ['RRRL', 'LRRL', false],
+      ['RLRR', 'LLRR', false],
+      ['RRLR', 'LRRR', false]
+    ];
+
+    /* ============================================================================
+       2. PROCEDURAL WEB AUDIO SYNTHESIZER
+       ============================================================================ */
+    let audioCtx = null;
+    let soundMuted = false;
+    let isGoldenHour = true;
+
+    function initAudio() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContextClass();
+      }
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function playTone(freq, type = 'sine', duration = 0.2, volume = 0.07) {
+      if (soundMuted) return;
+      try {
+        initAudio();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {}
+    }
+
+    function playSplashSound() {
+      if (soundMuted) return;
+      try {
+        initAudio();
+        const bufferSize = audioCtx.sampleRate * 0.32;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.28));
+        }
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(520, audioCtx.currentTime);
+        filter.frequency.exponentialRampToValueAtTime(160, audioCtx.currentTime + 0.32);
+
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.14, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.32);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+        noise.start();
+      } catch (e) {}
+    }
+
+    function soundHop() {
+      playTone(420, 'sine', 0.14, 0.06);
+      setTimeout(() => playTone(560, 'triangle', 0.12, 0.05), 60);
+    }
+
+    function soundRow() {
+      playSplashSound();
+      setTimeout(playSplashSound, 520);
+      setTimeout(playSplashSound, 1040);
+    }
+
+    function soundConflict() {
+      playTone(175, 'sawtooth', 0.28, 0.12);
+      setTimeout(() => playTone(130, 'sawtooth', 0.38, 0.14), 160);
+    }
+
+    function soundVictory() {
+      [440, 554.37, 659.25, 880, 1108.73].forEach((f, idx) => {
+        setTimeout(() => playTone(f, 'triangle', 0.36, 0.09), idx * 105);
+      });
+    }
+
+    function toggleAudio() {
+      soundMuted = !soundMuted;
+      const icon = document.getElementById('sound-icon');
+      icon.className = soundMuted
+        ? 'fa-solid fa-volume-xmark text-rose-400 text-xs'
+        : 'fa-solid fa-volume-high text-xs';
+    }
+
+    /* ============================================================================
+       3. THREE.JS SCENE, LIGHTING & REALISTIC ENVIRONMENT
+       ============================================================================ */
+    const canvas = document.getElementById('webgl-canvas');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x090D16);
+    scene.fog = new THREE.FogExp2(0x090D16, 0.015);
+
+    const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 200);
+    camera.position.set(-4.5, 13.5, 24.5);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2 - 0.04;
+    controls.minDistance = 8;
+    controls.maxDistance = 46;
+    controls.target.set(0, 0.8, 0);
+
+    // Multi-source studio + natural sunlight
+    const hemiLight = new THREE.HemisphereLight(0xffedd5, 0x1e293b, 0.68);
+    scene.add(hemiLight);
+
+    const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.85);
+    sunLight.position.set(16, 26, 15);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.near = 2;
+    sunLight.shadow.camera.far = 65;
+    sunLight.shadow.camera.left = -22;
+    sunLight.shadow.camera.right = 22;
+    sunLight.shadow.camera.top = 22;
+    sunLight.shadow.camera.bottom = -22;
+    sunLight.shadow.bias = -0.0004;
+    scene.add(sunLight);
+
+    const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.45);
+    rimLight.position.set(-14, 8, -12);
+    scene.add(rimLight);
+
+    function toggleTimeOfDay() {
+      isGoldenHour = !isGoldenHour;
+      const icon = document.getElementById('env-time-icon');
+      if (isGoldenHour) {
+        icon.className = 'fa-solid fa-sun text-xs text-amber-400';
+        scene.background.set(0x090D16);
+        scene.fog.color.set(0x090D16);
+        sunLight.color.set(0xfffbeb);
+        sunLight.intensity = 1.85;
+        hemiLight.color.set(0xffedd5);
+      } else {
+        icon.className = 'fa-solid fa-moon text-xs text-sky-400';
+        scene.background.set(0x05070B);
+        scene.fog.color.set(0x05070B);
+        sunLight.color.set(0x93c5fd);
+        sunLight.intensity = 0.95;
+        hemiLight.color.set(0x38bdf8);
+      }
+    }
+
+    // Environment Group
+    const envGroup = new THREE.Group();
+    scene.add(envGroup);
+
+    // Riverbed
+    const riverbed = new THREE.Mesh(
+      new THREE.PlaneGeometry(60, 50),
+      new THREE.MeshStandardMaterial({ color: 0x061524, roughness: 0.95 })
+    );
+    riverbed.rotation.x = -Math.PI / 2;
+    riverbed.position.y = -2.0;
+    envGroup.add(riverbed);
+
+    // Multi-wave Animated River Surface
+    const waterGeo = new THREE.PlaneGeometry(16, 44, 68, 68);
+    const waterMat = new THREE.MeshStandardMaterial({
+      color: 0x0284c7,
+      roughness: 0.14,
+      metalness: 0.82,
+      transparent: true,
+      opacity: 0.88
+    });
+    const waterMesh = new THREE.Mesh(waterGeo, waterMat);
+    waterMesh.rotation.x = -Math.PI / 2;
+    waterMesh.position.y = -0.15;
+    waterMesh.receiveShadow = true;
+    envGroup.add(waterMesh);
+
+    const waterPosAttr = waterGeo.attributes.position;
+    const baseWaterVerts = [];
+    for (let i = 0; i < waterPosAttr.count; i++) {
+      baseWaterVerts.push(waterPosAttr.getX(i), waterPosAttr.getY(i), waterPosAttr.getZ(i));
+    }
+
+    // West (Left) & East (Right) Riverbanks
+    const meadowMat = new THREE.MeshStandardMaterial({ color: 0x1b3b22, roughness: 0.86, flatShading: true });
+    const earthMat = new THREE.MeshStandardMaterial({ color: 0x3b2614, roughness: 0.92 });
+
+    const leftBank = new THREE.Mesh(new THREE.BoxGeometry(16, 2.2, 44), meadowMat);
+    leftBank.position.set(-15.8, -0.1, 0);
+    leftBank.receiveShadow = true;
+    envGroup.add(leftBank);
+
+    const rightBank = new THREE.Mesh(new THREE.BoxGeometry(16, 2.2, 44), meadowMat);
+    rightBank.position.set(15.8, -0.1, 0);
+    rightBank.receiveShadow = true;
+    envGroup.add(rightBank);
+
+    // Stepped Earthen Embankments
+    const leftSlope = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.95, 44), earthMat);
+    leftSlope.position.set(-7.5, -0.25, 0);
+    leftSlope.receiveShadow = true;
+    envGroup.add(leftSlope);
+
+    const rightSlope = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.95, 44), earthMat);
+    rightSlope.position.set(7.5, -0.25, 0);
+    rightSlope.receiveShadow = true;
+    envGroup.add(rightSlope);
+
+    // Timber Boarding Piers & Mooring Bollards
+    function createDockPier(xPos) {
+      const pier = new THREE.Group();
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x5c3a1e, roughness: 0.82 });
+      const ironMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.85, roughness: 0.35 });
+
+      for (let i = -2; i <= 2; i++) {
+        const plank = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.14, 3.4), woodMat);
+        plank.position.set(i * 0.78, 0.88, 0);
+        plank.castShadow = true;
+        plank.receiveShadow = true;
+        pier.add(plank);
+      }
+
+      const postGeo = new THREE.CylinderGeometry(0.15, 0.17, 3.2, 8);
+      [[-1.75, -1.4], [-1.75, 1.4], [1.75, -1.4], [1.75, 1.4]].forEach(([px, pz]) => {
+        const post = new THREE.Mesh(postGeo, woodMat);
+        post.position.set(px, 0.25, pz);
+        post.castShadow = true;
+        pier.add(post);
+
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.08, 8), ironMat);
+        cap.position.set(px, 1.88, pz);
+        pier.add(cap);
+      });
+
+      pier.position.set(xPos, 0, 0);
+      return pier;
+    }
+    envGroup.add(createDockPier(-6.6));
+    envGroup.add(createDockPier(6.6));
+
+    // Trees, Rocks & Cattail Reeds
+    function populateLandscape() {
+      const pineMat = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.8, flatShading: true });
+      const goldLeafMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.8, flatShading: true });
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x452c16, roughness: 0.9 });
+      const stoneMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.88, flatShading: true });
+      const reedStemMat = new THREE.MeshStandardMaterial({ color: 0x4d7c0f, roughness: 0.75 });
+      const cattailMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
+
+      function buildTree(x, z, isAutumn) {
+        const tree = new THREE.Group();
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 2.2, 7), trunkMat);
+        trunk.position.y = 1.1;
+        trunk.castShadow = true;
+        tree.add(trunk);
+
+        const leafMat = isAutumn ? goldLeafMat : pineMat;
+        for (let i = 0; i < 3; i++) {
+          const tier = new THREE.Mesh(new THREE.ConeGeometry(1.55 - i * 0.32, 1.85, 7), leafMat);
+          tier.position.y = 2.15 + i * 1.05;
+          tier.castShadow = true;
+          tree.add(tier);
+        }
+        const s = 0.8 + Math.random() * 0.45;
+        tree.scale.set(s, s, s);
+        tree.position.set(x, 0.85, z);
+        return tree;
+      }
+
+      function buildCattails(x, z) {
+        const group = new THREE.Group();
+        for (let i = 0; i < 5; i++) {
+          const h = 1.2 + Math.random() * 0.5;
+          const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, h, 5), reedStemMat);
+          const ox = (Math.random() - 0.5) * 0.45;
+          const oz = (Math.random() - 0.5) * 0.45;
+          stem.position.set(ox, h / 2, oz);
+          group.add(stem);
+
+          if (i % 2 === 0) {
+            const head = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.25, 6), cattailMat);
+            head.position.set(ox, h - 0.15, oz);
+            group.add(head);
+          }
+        }
+        group.position.set(x, 0, z);
+        return group;
+      }
+
+      [[-12.5, -11], [-15, -6], [-13, 6], [-16, 11], [-18, -2], [12.5, -10], [15.5, -5], [13, 7], [16, 12], [18, 1]].forEach(([tx, tz], i) => {
+        envGroup.add(buildTree(tx, tz, i % 3 === 0));
+      });
+
+      [-8.5, 8.5].forEach(bx => {
+        [-7, -3.5, 3.8, 8.2].forEach(bz => {
+          const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.45 + Math.random() * 0.3, 1), stoneMat);
+          rock.position.set(bx, 0.9, bz);
+          rock.rotation.set(Math.random(), Math.random(), 0);
+          rock.castShadow = true;
+          envGroup.add(rock);
+        });
+      });
+
+      [[-7.6, -5], [-7.6, 4.5], [7.6, -4.5], [7.6, 5.2]].forEach(([rx, rz]) => {
+        envGroup.add(buildCattails(rx, rz));
+      });
+    }
+    populateLandscape();
+
+    /* ============================================================================
+       4. REALISTIC CLINKER WOODEN ROWBOAT & 3D CHARACTERS
+       ============================================================================ */
+    const boatGroup = new THREE.Group();
+    boatGroup.name = 'boat';
+    scene.add(boatGroup);
+
+    function createRealisticClinkerBoat() {
+      const boat = new THREE.Group();
+
+      const cedarHullMat = new THREE.MeshStandardMaterial({ color: 0x854d0e, roughness: 0.62 });
+      const mahoganyTrimMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.72 });
+      const interiorFloorMat = new THREE.MeshStandardMaterial({ color: 0x713f12, roughness: 0.82 });
+      const brassMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.88, roughness: 0.22 });
+      const ropeMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.92 });
+
+      // Layered Lapstrake Hull Strakes
+      const strakeHeights = [0.22, 0.42, 0.62];
+      const strakeWidths = [1.65, 1.92, 2.15];
+      strakeHeights.forEach((hy, idx) => {
+        const strake = new THREE.Mesh(new THREE.BoxGeometry(4.35 - idx * 0.08, 0.22, strakeWidths[idx]), cedarHullMat);
+        strake.position.y = hy;
+        strake.castShadow = true;
+        strake.receiveShadow = true;
+        boat.add(strake);
+      });
+
+      // Keel Spine & Bow Stem Post
+      const keel = new THREE.Mesh(new THREE.BoxGeometry(4.65, 0.18, 0.2), mahoganyTrimMat);
+      keel.position.y = 0.08;
+      boat.add(keel);
+
+      // Slatted Floorboards
+      for (let z = -0.55; z <= 0.56; z += 0.28) {
+        const slat = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.06, 0.22), interiorFloorMat);
+        slat.position.set(0, 0.48, z);
+        slat.receiveShadow = true;
+        boat.add(slat);
+      }
+
+      // Internal Curved Ribs
+      [-1.3, -0.45, 0.45, 1.3].forEach(rx => {
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.42, 1.75), mahoganyTrimMat);
+        rib.position.set(rx, 0.58, 0);
+        boat.add(rib);
+      });
+
+      // Gunwale Top Rails
+      const railL = new THREE.Mesh(new THREE.BoxGeometry(4.45, 0.09, 0.14), mahoganyTrimMat);
+      railL.position.set(0, 0.78, 1.05);
+      const railR = railL.clone();
+      railR.position.set(0, 0.78, -1.05);
+      boat.add(railL, railR);
+
+      // Bow Stem & Stern Transom
+      const bowPost = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.88, 0.22), mahoganyTrimMat);
+      bowPost.position.set(2.15, 0.58, 0);
+      bowPost.rotation.z = -0.28;
+      boat.add(bowPost);
+
+      const sternTransom = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.68, 1.85), mahoganyTrimMat);
+      sternTransom.position.set(-2.08, 0.54, 0);
+      boat.add(sternTransom);
+
+      // Wooden Thwarts (Benches for Farmer and Cargo)
+      const farmerBench = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.1, 1.75), mahoganyTrimMat);
+      farmerBench.position.set(-0.85, 0.62, 0);
+      farmerBench.castShadow = true;
+      boat.add(farmerBench);
+
+      const cargoBench = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.1, 1.75), mahoganyTrimMat);
+      cargoBench.position.set(0.95, 0.62, 0);
+      cargoBench.castShadow = true;
+      boat.add(cargoBench);
+
+      // Brass Rowlocks
+      const lockGeo = new THREE.TorusGeometry(0.08, 0.025, 8, 12, Math.PI);
+      const lockL = new THREE.Mesh(lockGeo, brassMat);
+      lockL.position.set(-0.55, 0.86, 1.05);
+      lockL.rotation.x = Math.PI / 2;
+      const lockR = lockL.clone();
+      lockR.position.set(-0.55, 0.86, -1.05);
+      boat.add(lockL, lockR);
+
+      // Coiled Mooring Rope at Bow
+      const ropeCoil = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.045, 8, 16), ropeMat);
+      ropeCoil.position.set(1.75, 0.72, 0);
+      ropeCoil.rotation.x = Math.PI / 2;
+      boat.add(ropeCoil);
+
+      return boat;
+    }
+
+    boatGroup.add(createRealisticClinkerBoat());
+
+    // Articulated Wooden Oars with Copper Blade Bands
+    const oarsGroup = new THREE.Group();
+    function createOar(isLeft) {
+      const oar = new THREE.Group();
+      const shaftMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.58 });
+      const bladeMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.62 });
+      const copperMat = new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.75, roughness: 0.28 });
+
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.045, 2.85, 8), shaftMat);
+      shaft.rotation.z = Math.PI / 4;
+      oar.add(shaft);
+
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.88, 0.04), bladeMat);
+      blade.position.set(1.12, -1.02, 0);
+      blade.rotation.z = Math.PI / 4;
+      oar.add(blade);
+
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.12, 0.05), copperMat);
+      band.position.set(1.42, -1.32, 0);
+      band.rotation.z = Math.PI / 4;
+      oar.add(band);
+
+      oar.position.set(-0.55, 0.86, isLeft ? 1.05 : -1.05);
+      oar.rotation.x = isLeft ? 0.36 : -0.36;
+      return oar;
+    }
+    const oarL = createOar(true);
+    const oarR = createOar(false);
+    oarsGroup.add(oarL, oarR);
+    boatGroup.add(oarsGroup);
+
+    const DOCK_L_X = -4.5;
+    const DOCK_R_X = 4.5;
+    boatGroup.position.set(DOCK_L_X, 0, 0);
+
+    // 1. Detailed 3D Farmer
+    function createFarmerMesh() {
+      const farmer = new THREE.Group();
+      farmer.name = 'farmer';
+
+      const denimMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.75 });
+      const flannelMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.8 });
+      const skinMat = new THREE.MeshStandardMaterial({ color: 0xf5d0b5, roughness: 0.6 });
+      const strawMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.88 });
+      const bootMat = new THREE.MeshStandardMaterial({ color: 0x27170a, roughness: 0.8 });
+
+      const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.31, 0.75, 10), denimMat);
+      torso.position.y = 0.42;
+      torso.castShadow = true;
+      farmer.add(torso);
+
+      const armGeo = new THREE.CylinderGeometry(0.08, 0.075, 0.52, 8);
+      const armL = new THREE.Mesh(armGeo, flannelMat);
+      armL.position.set(0.05, 0.52, 0.36);
+      armL.rotation.set(0.35, 0, 0.2);
+      const armR = new THREE.Mesh(armGeo, flannelMat);
+      armR.position.set(0.05, 0.52, -0.36);
+      armR.rotation.set(-0.35, 0, -0.2);
+      farmer.add(armL, armR);
+
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), skinMat);
+      head.position.y = 0.96;
+      head.castShadow = true;
+      farmer.add(head);
+
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.56, 0.05, 16), strawMat);
+      brim.position.y = 1.1;
+      brim.castShadow = true;
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.28, 0.32, 14), strawMat);
+      crown.position.y = 1.25;
+      const ribbon = new THREE.Mesh(new THREE.CylinderGeometry(0.285, 0.285, 0.07, 14), flannelMat);
+      ribbon.position.y = 1.14;
+      farmer.add(brim, crown, ribbon);
+
+      const bootL = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 0.16), bootMat);
+      bootL.position.set(0.14, 0.06, 0.15);
+      const bootR = bootL.clone();
+      bootR.position.set(0.14, 0.06, -0.15);
+      farmer.add(bootL, bootR);
+
+      farmer.scale.set(1.18, 1.18, 1.18);
+      return farmer;
+    }
+
+    // 2. Detailed 3D Fox
+    function createFoxMesh() {
+      const fox = new THREE.Group();
+      fox.name = 'fox';
+
+      const russetMat = new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.65 });
+      const whiteFurMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.7 });
+      const darkSockMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.5 });
+
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.27, 0.92, 10), russetMat);
+      body.rotation.x = Math.PI / 2;
+      body.position.y = 0.38;
+      body.castShadow = true;
+      fox.add(body);
+
+      const bib = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.34, 0.26), whiteFurMat);
+      bib.position.set(0, 0.41, 0.36);
+      fox.add(bib);
+
+      const headGroup = new THREE.Group();
+      headGroup.position.set(0, 0.68, 0.5);
+      const skull = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.34, 0.36), russetMat);
+      skull.castShadow = true;
+      const snout = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.38, 4), russetMat);
+      snout.rotation.x = Math.PI / 2;
+      snout.position.set(0, -0.05, 0.34);
+      const nose = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), darkSockMat);
+      nose.position.set(0, -0.04, 0.52);
+
+      const earL = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.26, 4), russetMat);
+      earL.position.set(-0.14, 0.26, 0.04);
+      const earR = earL.clone();
+      earR.position.set(0.14, 0.26, 0.04);
+      headGroup.add(skull, snout, nose, earL, earR);
+      fox.add(headGroup);
+
+      const tailGroup = new THREE.Group();
+      const tailMain = new THREE.Mesh(new THREE.ConeGeometry(0.19, 0.72, 8), russetMat);
+      tailMain.position.y = 0.35;
+      const tailTip = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.26, 8), whiteFurMat);
+      tailTip.position.y = 0.82;
+      tailGroup.add(tailMain, tailTip);
+      tailGroup.position.set(0, 0.42, -0.52);
+      tailGroup.rotation.x = -Math.PI / 3;
+      fox.add(tailGroup);
+      fox.userData.tail = tailGroup;
+
+      const legGeo = new THREE.CylinderGeometry(0.055, 0.05, 0.38, 6);
+      [[-0.16, 0.3], [0.16, 0.3], [-0.16, -0.3], [0.16, -0.3]].forEach(([lx, lz]) => {
+        const leg = new THREE.Mesh(legGeo, darkSockMat);
+        leg.position.set(lx, 0.19, lz);
+        leg.castShadow = true;
+        fox.add(leg);
+      });
+
+      fox.scale.set(1.15, 1.15, 1.15);
+      return fox;
+    }
+
+    // 3. Detailed 3D Goose
+    function createGooseMesh() {
+      const goose = new THREE.Group();
+      goose.name = 'goose';
+
+      const plumageMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.52 });
+      const featherFoldMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.58 });
+      const billMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.38 });
+      const eyeMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.2 });
+
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.4, 14, 14), plumageMat);
+      body.scale.set(0.85, 0.74, 1.24);
+      body.position.y = 0.42;
+      body.castShadow = true;
+      goose.add(body);
+
+      const wingL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.34, 0.64), featherFoldMat);
+      wingL.position.set(0.36, 0.46, 0);
+      wingL.rotation.set(0, 0.1, -0.1);
+      const wingR = wingL.clone();
+      wingR.position.set(-0.36, 0.46, 0);
+      wingR.rotation.set(0, -0.1, 0.1);
+      goose.add(wingL, wingR);
+
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.14, 0.66, 10), plumageMat);
+      neck.position.set(0, 0.76, 0.36);
+      neck.rotation.x = -0.28;
+      neck.castShadow = true;
+      goose.add(neck);
+
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 10), plumageMat);
+      head.position.set(0, 1.06, 0.5);
+      const bill = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.28, 6), billMat);
+      bill.rotation.x = Math.PI / 2;
+      bill.position.set(0, 1.04, 0.7);
+      const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.028, 6, 6), eyeMat);
+      eyeL.position.set(0.12, 1.1, 0.56);
+      const eyeR = eyeL.clone();
+      eyeR.position.set(-0.12, 1.1, 0.56);
+      goose.add(head, bill, eyeL, eyeR);
+
+      const footL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, 0.25), billMat);
+      footL.position.set(0.16, 0.04, 0);
+      const footR = footL.clone();
+      footR.position.set(-0.16, 0.04, 0);
+      goose.add(footL, footR);
+
+      goose.scale.set(1.15, 1.15, 1.15);
+      return goose;
+    }
+
+    // 4. Detailed 3D Burlap Sack of Beans
+    function createBeansMesh() {
+      const beans = new THREE.Group();
+      beans.name = 'beans';
+
+      const burlapMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.92 });
+      const ropeMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.85 });
+      const greenBeanMat = new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.38 });
+
+      const sackBody = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.46, 0.8, 12), burlapMat);
+      sackBody.position.y = 0.4;
+      sackBody.castShadow = true;
+      beans.add(sackBody);
+
+      const cuff = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.35, 10), burlapMat);
+      cuff.position.y = 0.94;
+      cuff.rotation.x = Math.PI;
+      beans.add(cuff);
+
+      const cord = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.048, 8, 14), ropeMat);
+      cord.rotation.x = Math.PI / 2;
+      cord.position.y = 0.78;
+      beans.add(cord);
+
+      // Visible green beans at top of sack
+      for (let i = 0; i < 6; i++) {
+        const b = new THREE.Mesh(new THREE.SphereGeometry(0.065, 6, 6), greenBeanMat);
+        b.scale.set(0.9, 0.55, 1.35);
+        const angle = (i / 6) * Math.PI * 2;
+        b.position.set(Math.cos(angle) * 0.14, 0.96, Math.sin(angle) * 0.14);
+        beans.add(b);
+      }
+
+      beans.scale.set(1.15, 1.15, 1.15);
+      return beans;
+    }
+
+    const farmerMesh = createFarmerMesh();
+    const foxMesh = createFoxMesh();
+    const gooseMesh = createGooseMesh();
+    const beansMesh = createBeansMesh();
+
+    scene.add(foxMesh, gooseMesh, beansMesh);
+
+    const SLOTS = {
+      L: {
+        fox:   new THREE.Vector3(-10.2, 0.95, -2.5),
+        goose: new THREE.Vector3(-10.2, 0.95, 0.0),
+        beans: new THREE.Vector3(-10.2, 0.95, 2.5)
+      },
+      R: {
+        fox:   new THREE.Vector3(10.2, 0.95, -2.5),
+        goose: new THREE.Vector3(10.2, 0.95, 0.0),
+        beans: new THREE.Vector3(10.2, 0.95, 2.5)
+      },
+      boat: {
+        farmer: new THREE.Vector3(-0.85, 0.68, 0),
+        cargo:  new THREE.Vector3(0.95, 0.68, 0)
+      }
+    };
+
+    boatGroup.add(farmerMesh);
+    farmerMesh.position.copy(SLOTS.boat.farmer);
+
+    foxMesh.position.copy(SLOTS.L.fox);
+    gooseMesh.position.copy(SLOTS.L.goose);
+    beansMesh.position.copy(SLOTS.L.beans);
+    foxMesh.rotation.y = Math.PI / 2;
+    gooseMesh.rotation.y = Math.PI / 2;
+    beansMesh.rotation.y = Math.PI / 2;
+
+    const interactableMeshes = [foxMesh, gooseMesh, beansMesh, boatGroup];
+
+    // Expanding Water Wake Rings
+    const wakeParticles = [];
+    const wakeGeo = new THREE.RingGeometry(0.12, 0.36, 18);
+    const wakeBaseMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
+
+    function spawnWakeRing(x, z) {
+      const ring = new THREE.Mesh(wakeGeo, wakeBaseMat.clone());
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(x, -0.09, z);
+      scene.add(ring);
+      wakeParticles.push({ mesh: ring, age: 0 });
+    }
+
+    /* ============================================================================
+       5. GSAP KINEMATICS & 3D RAYCAST INTERACTION
+       ============================================================================ */
+    function getMeshByKey(key) {
+      return key === 'fox' ? foxMesh : key === 'goose' ? gooseMesh : beansMesh;
+    }
+
+    function animateBoardingJump(itemKey, onComplete) {
+      const mesh = getMeshByKey(itemKey);
+      const targetWorld = new THREE.Vector3();
+      boatGroup.localToWorld(targetWorld.copy(SLOTS.boat.cargo));
+
+      soundHop();
+
+      // Boat buoyancy recoil
+      gsap.to(boatGroup.position, { y: -0.14, duration: 0.22, yoyo: true, repeat: 1 });
+      gsap.to(boatGroup.rotation, { z: gameState.farmerBank === 'L' ? -0.05 : 0.05, duration: 0.26, yoyo: true, repeat: 1 });
+
+      gsap.to(mesh.position, { x: targetWorld.x, z: targetWorld.z, duration: 0.5, ease: 'power2.out' });
+      gsap.to(mesh.position, {
+        y: targetWorld.y + 1.65,
+        duration: 0.25,
+        ease: 'power2.out',
+        yoyo: true,
+        repeat: 1,
+        onComplete: () => {
+          mesh.position.copy(SLOTS.boat.cargo);
+          boatGroup.add(mesh);
+          if (onComplete) onComplete();
+        }
+      });
+    }
+
+    function animateDisembarkJump(itemKey, targetBank, onComplete) {
+      const mesh = getMeshByKey(itemKey);
+      const targetPos = SLOTS[targetBank][itemKey];
+
+      const currentWorld = new THREE.Vector3();
+      mesh.getWorldPosition(currentWorld);
+      scene.add(mesh);
+      mesh.position.copy(currentWorld);
+
+      soundHop();
+      gsap.to(boatGroup.position, { y: 0.08, duration: 0.22, yoyo: true, repeat: 1 });
+
+      gsap.to(mesh.position, { x: targetPos.x, z: targetPos.z, duration: 0.52, ease: 'power2.out' });
+      gsap.to(mesh.position, {
+        y: targetPos.y + 1.65,
+        duration: 0.26,
+        ease: 'power2.out',
+        yoyo: true,
+        repeat: 1,
+        onComplete: () => {
+          mesh.position.copy(targetPos);
+          mesh.rotation.y = targetBank === 'L' ? Math.PI / 2 : -Math.PI / 2;
+          if (onComplete) onComplete();
+        }
+      });
+    }
+
+    function animateRowingCrossing(targetBank, onComplete) {
+      const targetX = targetBank === 'R' ? DOCK_R_X : DOCK_L_X;
+      soundRow();
+
+      gsap.to(boatGroup.rotation, { z: 0.06, duration: 0.35, yoyo: true, repeat: 3, ease: 'sine.inOut' });
+      gsap.to(oarsGroup.rotation, { y: 0.48, duration: 0.32, yoyo: true, repeat: 5, ease: 'power1.inOut' });
+
+      gsap.to(boatGroup.position, {
+        x: targetX,
+        duration: 1.65,
+        ease: 'power2.inOut',
+        onUpdate: () => {
+          if (Math.random() > 0.45) {
+            spawnWakeRing(boatGroup.position.x - (targetBank === 'R' ? 1.4 : -1.4), boatGroup.position.z);
+          }
+        },
+        onComplete: () => {
+          boatGroup.rotation.z = 0;
+          oarsGroup.rotation.y = 0;
+          if (onComplete) onComplete();
+        }
+      });
+    }
+
+    // Raycasting for Hover & Direct Click
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const hoverLabel = document.getElementById('hover-label');
+
+    function resolveActorRoot(obj) {
+      let curr = obj;
+      while (curr && !['fox', 'goose', 'beans', 'boat'].includes(curr.name)) {
+        curr = curr.parent;
+      }
+      return curr;
+    }
+
+    window.addEventListener('pointermove', (e) => {
+      if (e.target.tagName !== 'CANVAS' || gameState.isRowing || gameState.gameOver) {
+        hoverLabel.classList.add('hidden');
+        document.body.style.cursor = 'default';
+        return;
+      }
+      pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+      pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(interactableMeshes, true);
+
+      if (hits.length > 0) {
+        const root = resolveActorRoot(hits[0].object);
+        if (root) {
+          document.body.style.cursor = 'pointer';
+          hoverLabel.classList.remove('hidden');
+          hoverLabel.style.left = `${e.clientX + 14}px`;
+          hoverLabel.style.top = `${e.clientY - 10}px`;
+          if (root.name === 'boat') {
+            hoverLabel.textContent = `Row Boat to ${gameState.farmerBank === 'L' ? 'East Bank (R)' : 'West Bank (L)'}`;
+          } else {
+            const labelName = root.name.charAt(0).toUpperCase() + root.name.slice(1);
+            hoverLabel.textContent = gameState.boatCargo === root.name
+              ? `Unload ${labelName} onto Bank`
+              : `Load ${labelName} into Boat`;
+          }
+          return;
+        }
+      }
+      hoverLabel.classList.add('hidden');
+      document.body.style.cursor = 'default';
+    });
+
+    window.addEventListener('pointerdown', (e) => {
+      if (e.target.tagName !== 'CANVAS' || gameState.isRowing || gameState.gameOver) return;
+      pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+      pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(interactableMeshes, true);
+
+      if (hits.length > 0) {
+        const root = resolveActorRoot(hits[0].object);
+        if (!root) return;
+        if (root.name === 'boat') {
+          rowBoatAcross();
+        } else if (['fox', 'goose', 'beans'].includes(root.name)) {
+          toggleItemBoarding(root.name);
+        }
+      }
+    });
+
+    /* ============================================================================
+       6. MANUAL & ALGORITHMIC GAME LOOP LOGIC
+       ============================================================================ */
+    function getEffectivePositions() {
+      return {
+        F: gameState.farmerBank,
+        X: gameState.positions.fox === 'boat' ? gameState.farmerBank : gameState.positions.fox,
+        G: gameState.positions.goose === 'boat' ? gameState.farmerBank : gameState.positions.goose,
+        B: gameState.positions.beans === 'boat' ? gameState.farmerBank : gameState.positions.beans
+      };
+    }
+
+    function getStateKey(pos = getEffectivePositions()) {
+      return `${pos.F}${pos.X}${pos.G}${pos.B}`;
+    }
+
+    function recordHistory() {
+      gameState.history.push({
+        farmerBank: gameState.farmerBank,
+        boatCargo: gameState.boatCargo,
+        positions: { ...gameState.positions },
+        movesCount: gameState.movesCount
+      });
+    }
+
+    function setBannerMessage(msg, type = 'info') {
+      const banner = document.getElementById('status-banner');
+      const dot = document.getElementById('status-dot');
+      const text = document.getElementById('status-text');
+      text.textContent = msg;
+      if (type === 'warn') {
+        banner.className = 'studio-panel px-3 py-2 rounded-[8px] flex items-center justify-between text-xs border-l-2 border-l-amber-400 pointer-events-auto';
+        dot.className = 'w-2 h-2 rounded-full bg-amber-400';
+      } else {
+        banner.className = 'studio-panel px-3 py-2 rounded-[8px] flex items-center justify-between text-xs border-l-2 border-l-emerald-500 pointer-events-auto';
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+      }
+    }
+
+    function toggleItemBoarding(itemKey) {
+      if (gameState.isRowing || gameState.gameOver) return;
+
+      // Unload if already in boat
+      if (gameState.boatCargo === itemKey) {
+        recordHistory();
+        const bank = gameState.farmerBank;
+        gameState.boatCargo = null;
+        gameState.positions[itemKey] = bank;
+        setBannerMessage(`Unloaded ${itemKey.toUpperCase()} onto ${bank === 'L' ? 'West' : 'East'} Bank.`);
+        updateUI();
+        animateDisembarkJump(itemKey, bank, () => evaluateBoardOutcome());
+        return;
+      }
+
+      // Check if item is on current shore
+      if (gameState.positions[itemKey] !== gameState.farmerBank && gameState.positions[itemKey] !== 'boat') {
+        setBannerMessage(`Row the boat to the ${gameState.positions[itemKey] === 'L' ? 'West (L)' : 'East (R)'} Bank first!`, 'warn');
+        return;
+      }
+
+      // Swap cargo automatically if another item is already in the boat
+      if (gameState.boatCargo !== null) {
+        const prevCargo = gameState.boatCargo;
+        const bank = gameState.farmerBank;
+        recordHistory();
+        gameState.positions[prevCargo] = bank;
+        gameState.boatCargo = itemKey;
+        gameState.positions[itemKey] = 'boat';
+        setBannerMessage(`Swapped ${prevCargo.toUpperCase()} with ${itemKey.toUpperCase()} in the boat.`);
+        updateUI();
+        animateDisembarkJump(prevCargo, bank);
+        animateBoardingJump(itemKey, () => evaluateBoardOutcome());
+        return;
+      }
+
+      recordHistory();
+      gameState.boatCargo = itemKey;
+      gameState.positions[itemKey] = 'boat';
+      setBannerMessage(`Loaded ${itemKey.toUpperCase()} aboard the rowboat.`);
+      updateUI();
+      animateBoardingJump(itemKey, () => evaluateBoardOutcome());
+    }
+
+    function rowBoatAcross() {
+      if (gameState.isRowing || gameState.gameOver) return;
+
+      recordHistory();
+      gameState.isRowing = true;
+      const nextBank = gameState.farmerBank === 'L' ? 'R' : 'L';
+      gameState.farmerBank = nextBank;
+      gameState.movesCount++;
+      setBannerMessage(`Rowing across river to ${nextBank === 'L' ? 'West (L)' : 'East (R)'} Bank...`);
+      updateUI();
+
+      animateRowingCrossing(nextBank, () => {
+        gameState.isRowing = false;
+        updateUI();
+        evaluateBoardOutcome();
+      });
+    }
+
+    function evaluateBoardOutcome() {
+      const eff = getEffectivePositions();
+
+      // Check Fox + Goose Conflict
+      if (eff.X === eff.G && eff.F !== eff.G) {
+        triggerConflict(
+          'Fox Devoured the Goose!',
+          `The Farmer rowed to the ${eff.F === 'L' ? 'West' : 'East'} Bank, leaving the Fox and Goose unsupervised on the ${eff.G === 'L' ? 'West (L)' : 'East (R)'} Bank.`,
+          `(${eff.F}, ${eff.X}, ${eff.G}, ${eff.B})`
+        );
+        return;
+      }
+
+      // Check Goose + Beans Conflict
+      if (eff.G === eff.B && eff.F !== eff.G) {
+        triggerConflict(
+          'Goose Devoured the Beans!',
+          `The Farmer rowed to the ${eff.F === 'L' ? 'West' : 'East'} Bank, leaving the Goose and Sack of Beans unsupervised on the ${eff.G === 'L' ? 'West (L)' : 'East (R)'} Bank.`,
+          `(${eff.F}, ${eff.X}, ${eff.G}, ${eff.B})`
+        );
+        return;
+      }
+
+      // Check Victory (Works even if final item is still in boat at East Bank!)
+      if (eff.F === 'R' && eff.X === 'R' && eff.G === 'R' && eff.B === 'R') {
+        triggerVictory();
+      }
+    }
+
+    function triggerConflict(title, desc, vectorStr) {
+      gameState.gameOver = true;
+      if (gameState.autoSolveTimer) stopAutoSolver();
+      soundConflict();
+      document.getElementById('conflict-title').textContent = title;
+      document.getElementById('conflict-desc').textContent = desc;
+      document.getElementById('conflict-vector-code').textContent = `${vectorStr} → CONFLICT`;
+      document.getElementById('conflict-modal').classList.remove('hidden');
+      updateUI();
+    }
+
+    function closeConflictModal() {
+      document.getElementById('conflict-modal').classList.add('hidden');
+      gameState.gameOver = false;
+    }
+
+    function triggerVictory() {
+      if (gameState.gameOver) return;
+      gameState.gameOver = true;
+      if (gameState.autoSolveTimer) stopAutoSolver();
+      soundVictory();
+
+      // Auto-unload final passenger onto East Bank for clean 3D completion
+      if (gameState.boatCargo) {
+        const finalItem = gameState.boatCargo;
+        gameState.positions[finalItem] = 'R';
+        gameState.boatCargo = null;
+        animateDisembarkJump(finalItem, 'R');
+      }
+
+      if (typeof confetti === 'function') {
+        confetti({ particleCount: 95, spread: 75, origin: { y: 0.6 } });
+      }
+
+      const moves = gameState.movesCount;
+      document.getElementById('victory-moves-count').textContent = `${moves} Moves`;
+      document.getElementById('victory-efficiency-note').textContent =
+        moves <= 7
+          ? 'Optimal! You matched the Breadth-First Search shortest path of 7 crossings.'
+          : `Solved safely in ${moves} crossings (${moves - 7} above the 7-move BFS optimum).`;
+
+      document.getElementById('victory-modal').classList.remove('hidden');
+      updateUI();
+    }
+
+    function closeVictoryModal() {
+      document.getElementById('victory-modal').classList.add('hidden');
+      gameState.gameOver = false;
+    }
+
+    function snap3DToCurrentState() {
+      const boatX = gameState.farmerBank === 'L' ? DOCK_L_X : DOCK_R_X;
+      gsap.killTweensOf(boatGroup.position);
+      boatGroup.position.set(boatX, 0, 0);
+      boatGroup.rotation.set(0, 0, 0);
+      oarsGroup.rotation.set(0, 0, 0);
+
+      ['fox', 'goose', 'beans'].forEach(key => {
+        const mesh = getMeshByKey(key);
+        gsap.killTweensOf(mesh.position);
+        const loc = gameState.positions[key];
+        if (loc === 'boat') {
+          boatGroup.add(mesh);
+          mesh.position.copy(SLOTS.boat.cargo);
+        } else {
+          scene.add(mesh);
+          mesh.position.copy(SLOTS[loc][key]);
+          mesh.rotation.y = loc === 'L' ? Math.PI / 2 : -Math.PI / 2;
+        }
+      });
+    }
+
+    function undoMove() {
+      if (gameState.history.length === 0 || gameState.isRowing) return;
+      const prev = gameState.history.pop();
+      gameState.farmerBank = prev.farmerBank;
+      gameState.boatCargo = prev.boatCargo;
+      gameState.positions = { ...prev.positions };
+      gameState.movesCount = prev.movesCount;
+      gameState.gameOver = false;
+
+      snap3DToCurrentState();
+      setBannerMessage('Reverted to previous state.');
+      updateUI();
+    }
+
+    function resetPuzzle() {
+      stopAutoSolver();
+      gameState.farmerBank = 'L';
+      gameState.boatCargo = null;
+      gameState.positions = { fox: 'L', goose: 'L', beans: 'L' };
+      gameState.movesCount = 0;
+      gameState.history = [];
+      gameState.isRowing = false;
+      gameState.gameOver = false;
+
+      snap3DToCurrentState();
+      closeConflictModal();
+      closeVictoryModal();
+      setBannerMessage('Simulation reset to initial state (L, L, L, L).');
+      updateUI();
+    }
+
+    // Jump directly to any valid state from the timeline or DAG
+    function jumpToStateVector(stateArr, stepIndex = null) {
+      if (gameState.isRowing) return;
+      stopAutoSolver();
+      recordHistory();
+      const [F, X, G, B] = stateArr;
+      gameState.farmerBank = F;
+      gameState.boatCargo = null;
+      gameState.positions = { fox: X, goose: G, beans: B };
+      if (stepIndex !== null) gameState.movesCount = stepIndex;
+      gameState.gameOver = false;
+
+      snap3DToCurrentState();
+      soundHop();
+      setBannerMessage(`Jumped to state (${F}, ${X}, ${G}, ${B}).`);
+      updateUI();
+      if (F === 'R' && X === 'R' && G === 'R' && B === 'R') {
+        triggerVictory();
+      }
+    }
+
+    /* ============================================================================
+       7. BFS STEP SOLVER, TIMELINE & DAG RENDERING
+       ============================================================================ */
+    function setSolutionBranch(branch) {
+      gameState.activeBranch = branch;
+      document.getElementById('branch-a-btn').className = branch === 'A'
+        ? 'px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+        : 'px-2 py-0.5 rounded bg-obsidian text-gray-400 border border-white/10 hover:text-gray-200';
+      document.getElementById('branch-b-btn').className = branch === 'B'
+        ? 'px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+        : 'px-2 py-0.5 rounded bg-obsidian text-gray-400 border border-white/10 hover:text-gray-200';
+      updateUI();
+    }
+
+    function algoNextStep() {
+      if (gameState.isRowing) return;
+      const curKey = getStateKey();
+      if (curKey === 'RRRR') {
+        setBannerMessage('Goal state (R,R,R,R) already reached!');
+        stopAutoSolver();
+        return;
+      }
+
+      // First unload any item currently sitting in the boat onto the bank so state is clean
+      if (gameState.boatCargo) {
+        const c = gameState.boatCargo;
+        gameState.positions[c] = gameState.farmerBank;
+        gameState.boatCargo = null;
+        snap3DToCurrentState();
+      }
+
+      const path = SOLUTION_PATHS[gameState.activeBranch];
+      let curIdx = path.findIndex(s => s.state.join('') === curKey);
+
+      // If user is on the other symmetric branch's state, switch branch automatically
+      if (curIdx === -1) {
+        const altBranch = gameState.activeBranch === 'A' ? 'B' : 'A';
+        const altIdx = SOLUTION_PATHS[altBranch].findIndex(s => s.state.join('') === curKey);
+        if (altIdx !== -1) {
+          setSolutionBranch(altBranch);
+          curIdx = altIdx;
+        } else {
+          curIdx = 0;
+        }
+      }
+
+      const nextStepObj = path[Math.min(curIdx + 1, path.length - 1)];
+      executeAnimatedStepTransition(nextStepObj);
+    }
+
+    function executeAnimatedStepTransition(stepObj) {
+      if (!stepObj || gameState.isRowing) return;
+      recordHistory();
+
+      const targetBank = stepObj.state[0];
+      const cargo = stepObj.cargo;
+
+      gameState.isRowing = true;
+      gameState.farmerBank = targetBank;
+      gameState.movesCount++;
+      gameState.boatCargo = cargo;
+
+      if (cargo) {
+        gameState.positions[cargo] = 'boat';
+        animateBoardingJump(cargo);
+      }
+
+      setBannerMessage(`BFS Step ${stepObj.step}: ${stepObj.action}`);
+      updateUI();
+
+      animateRowingCrossing(targetBank, () => {
+        if (cargo) {
+          gameState.positions[cargo] = targetBank;
+          gameState.boatCargo = null;
+          animateDisembarkJump(cargo, targetBank, () => {
+            gameState.isRowing = false;
+            updateUI();
+            evaluateBoardOutcome();
+          });
+        } else {
+          gameState.isRowing = false;
+          updateUI();
+          evaluateBoardOutcome();
+        }
+      });
+    }
+
+    function toggleAutoSolver() {
+      if (gameState.autoSolveTimer) {
+        stopAutoSolver();
+      } else {
+        if (getStateKey() === 'RRRR' || gameState.gameOver) {
+          resetPuzzle();
+        }
+        algoNextStep();
+        gameState.autoSolveTimer = setInterval(() => {
+          if (getStateKey() === 'RRRR' || gameState.gameOver) {
+            stopAutoSolver();
+          } else if (!gameState.isRowing) {
+            algoNextStep();
+          }
+        }, 2350);
+        updateAutoSolveButton();
+      }
+    }
+
+    function stopAutoSolver() {
+      if (gameState.autoSolveTimer) {
+        clearInterval(gameState.autoSolveTimer);
+        gameState.autoSolveTimer = null;
+      }
+      updateAutoSolveButton();
+    }
+
+    function updateAutoSolveButton() {
+      const icon = document.getElementById('autosolve-icon');
+      const label = document.getElementById('autosolve-label');
+      if (gameState.autoSolveTimer) {
+        icon.className = 'fa-solid fa-pause text-[10px]';
+        label.textContent = 'Pause';
+      } else {
+        icon.className = 'fa-solid fa-play text-[10px]';
+        label.textContent = 'Auto-Solve';
+      }
+    }
+
+    function renderStepsTimeline() {
+      const container = document.getElementById('steps-timeline');
+      const path = SOLUTION_PATHS[gameState.activeBranch];
+      const curKey = getStateKey();
+
+      container.innerHTML = path.map((s) => {
+        const sKey = s.state.join('');
+        const isCurrent = sKey === curKey;
+        const isParadox = s.step === 4;
+        return `
+          <div onclick='jumpToStateVector(${JSON.stringify(s.state)}, ${s.step})'
+               class="cursor-pointer p-2.5 rounded-[6px] border transition-all flex items-start justify-between gap-2 ${
+                 isCurrent
+                   ? 'bg-amber-500/15 border-amber-500/50 shadow-sm'
+                   : 'bg-obsidian/80 border-white/5 hover:border-white/20'
+               }">
+            <div class="space-y-0.5">
+              <div class="flex items-center gap-2">
+                <span class="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                  isCurrent ? 'bg-amber-400 text-obsidian' : 'bg-elevated text-gray-400'
+                }">Step ${s.step}</span>
+                <span class="text-xs font-semibold ${isCurrent ? 'text-amber-300' : 'text-gray-200'}">${s.action}</span>
+                ${isParadox ? '<span class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">KEY PIVOT</span>' : ''}
+              </div>
+              <p class="text-[11px] text-gray-400 line-clamp-2">${s.desc}</p>
+            </div>
+            <span class="font-mono text-[11px] font-semibold shrink-0 ${
+              isCurrent ? 'text-amber-400' : 'text-emerald-400'
+            }">(${s.state.join(',')})</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderDAGVisualizer() {
+      const svg = document.getElementById('dag-svg');
+      const curKey = getStateKey();
+      const nodeMap = {};
+      DAG_NODES.forEach(n => { nodeMap[n.id] = n; });
+
+      let html = '';
+
+      // Edges
+      DAG_EDGES.forEach(([u, v, isSafeEdge]) => {
+        const n1 = nodeMap[u];
+        const n2 = nodeMap[v];
+        html += `<line x1="${n1.x}" y1="${n1.y}" x2="${n2.x}" y2="${n2.y}"
+                  stroke="${isSafeEdge ? '#10B981' : '#EF4444'}"
+                  stroke-opacity="${isSafeEdge ? '0.45' : '0.3'}"
+                  stroke-width="${isSafeEdge ? '2' : '1.2'}"
+                  ${isSafeEdge ? '' : 'stroke-dasharray="3,3"'} />`;
+      });
+
+      // Nodes
+      DAG_NODES.forEach(n => {
+        const isCurrent = n.id === curKey;
+        const fill = isCurrent ? '#F59E0B' : n.safe ? '#12131A' : '#1F1215';
+        const stroke = isCurrent ? '#FDE68A' : n.safe ? '#10B981' : '#EF4444';
+        const textColor = isCurrent ? '#090A0F' : n.safe ? '#E5E7EB' : '#FCA5A5';
+
+        if (isCurrent) {
+          html += `<circle cx="${n.x}" cy="${n.y}" r="15" fill="none" stroke="#F59E0B" stroke-width="2" class="svg-pulse" />`;
+        }
+
+        const clickAttr = n.safe
+          ? `onclick="jumpToStateVector(['${n.id[0]}','${n.id[1]}','${n.id[2]}','${n.id[3]}'], ${n.depth})" style="cursor:pointer"`
+          : '';
+
+        html += `
+          <g ${clickAttr}>
+            <rect x="${n.x - 24}" y="${n.y - 11}" width="48" height="22" rx="4"
+                  fill="${fill}" stroke="${stroke}" stroke-width="${isCurrent ? '2' : '1.2'}" />
+            <text x="${n.x}" y="${n.y + 3.5}" text-anchor="middle"
+                  fill="${textColor}" font-family="JetBrains Mono" font-size="9.5" font-weight="600">
+              ${n.label}
+            </text>
+          </g>
+        `;
+      });
+
+      svg.innerHTML = html;
+    }
+
+    function renderQueueAndPredicates() {
+      const eff = getEffectivePositions();
+      const foxGooseConflict = eff.X === eff.G && eff.F !== eff.G;
+      const gooseBeansConflict = eff.G === eff.B && eff.F !== eff.G;
+      const isValid = !foxGooseConflict && !gooseBeansConflict;
+
+      const overallEl = document.getElementById('pred-overall');
+      overallEl.textContent = isValid ? 'VALID STATE' : 'CONFLICT';
+      overallEl.className = isValid
+        ? 'text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400'
+        : 'text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400';
+
+      const fgEl = document.getElementById('pred-fox-goose');
+      fgEl.textContent = foxGooseConflict ? 'TRUE (Hazard!)' : 'FALSE (Safe)';
+      fgEl.className = foxGooseConflict ? 'text-rose-400 font-bold' : 'text-emerald-400';
+
+      const gbEl = document.getElementById('pred-goose-beans');
+      gbEl.textContent = gooseBeansConflict ? 'TRUE (Hazard!)' : 'FALSE (Safe)';
+      gbEl.className = gooseBeansConflict ? 'text-rose-400 font-bold' : 'text-emerald-400';
+
+      // Candidate Transitions from current state
+      const nextBank = eff.F === 'L' ? 'R' : 'L';
+      const candidates = [
+        { label: 'Row Farmer Alone', next: { ...eff, F: nextBank } }
+      ];
+      ['X', 'G', 'B'].forEach(k => {
+        if (eff[k] === eff.F) {
+          const nextState = { ...eff, F: nextBank };
+          nextState[k] = nextBank;
+          const nameMap = { X: 'Fox', G: 'Goose', B: 'Beans' };
+          candidates.push({ label: `Row Farmer + ${nameMap[k]}`, next: nextState });
+        }
+      });
+
+      document.getElementById('candidate-transitions').innerHTML = candidates.map(c => {
+        const s = c.next;
+        const badFG = s.X === s.G && s.F !== s.G;
+        const badGB = s.G === s.B && s.F !== s.G;
+        const safe = !badFG && !badGB;
+        return `
+          <div class="p-2 rounded bg-obsidian border ${safe ? 'border-emerald-500/30' : 'border-rose-500/30'} flex items-center justify-between">
+            <span class="text-gray-300">${c.label} &rarr; (${s.F},${s.X},${s.G},${s.B})</span>
+            <span class="${safe ? 'text-emerald-400' : 'text-rose-400'} font-semibold">
+              ${safe ? 'ENQUEUE' : 'PRUNED'}
+            </span>
+          </div>
+        `;
+      }).join('');
+
+      // BFS Layer Exploration Trace
+      const layers = [
+        { d: 0, nodes: ['(L,L,L,L)'] },
+        { d: 1, nodes: ['(R,L,R,L)'] },
+        { d: 2, nodes: ['(L,L,R,L)'] },
+        { d: 3, nodes: ['(R,R,R,L)', '(R,L,R,R)'] },
+        { d: 4, nodes: ['(L,R,L,L)', '(L,L,L,R)'] },
+        { d: 5, nodes: ['(R,R,L,R)'] },
+        { d: 6, nodes: ['(L,R,L,R)'] },
+        { d: 7, nodes: ['(R,R,R,R) [GOAL]'] }
+      ];
+      const curTuple = `(${eff.F},${eff.X},${eff.G},${eff.B})`;
+      document.getElementById('bfs-layer-trace').innerHTML = layers.map(l => {
+        const activeLayer = l.nodes.some(n => n.startsWith(curTuple));
+        return `
+          <div class="px-2 py-1.5 rounded ${activeLayer ? 'bg-amber-500/15 border border-amber-500/40 text-amber-300' : 'bg-obsidian text-gray-400'} flex items-center justify-between">
+            <span>Depth d=${l.d}</span>
+            <span>${l.nodes.join(' , ')}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateUI() {
+      const eff = getEffectivePositions();
+      const curKey = getStateKey(eff);
+      const binStr = curKey.split('').map(c => (c === 'R' ? '1' : '0')).join('');
+
+      document.getElementById('hud-vec-str').textContent = `(${eff.F}, ${eff.X}, ${eff.G}, ${eff.B})`;
+      document.getElementById('hud-vec-bin').textContent = `${binStr}₂`;
+      document.getElementById('hud-moves').textContent = `${gameState.movesCount} / 7`;
+
+      document.getElementById('boat-shore-badge').textContent =
+        gameState.farmerBank === 'L' ? 'West Bank (L)' : 'East Bank (R)';
+      document.getElementById('cargo-readout').textContent =
+        gameState.boatCargo ? `Boat: ${gameState.boatCargo.toUpperCase()}` : 'Boat: Empty';
+
+      ['fox', 'goose', 'beans'].forEach(key => {
+        const badge = document.getElementById(`badge-${key}`);
+        const btn = document.getElementById(`btn-${key}`);
+        const loc = gameState.positions[key];
+        badge.textContent = loc === 'boat' ? 'BOAT' : loc;
+        if (loc === 'boat') {
+          badge.className = 'text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-400 text-obsidian font-bold';
+          btn.className = 'studio-btn p-2 rounded-[6px] flex flex-col items-start gap-1 text-left border-amber-400/60 bg-amber-500/10';
+        } else {
+          badge.className = 'text-[10px] font-mono px-1.5 py-0.2 rounded bg-obsidian text-gray-400 border border-white/5';
+          btn.className = 'studio-btn p-2 rounded-[6px] flex flex-col items-start gap-1 text-left group';
+        }
+      });
+
+      const rowLabel = document.getElementById('row-btn-label');
+      const rowIcon = document.getElementById('row-dir-icon');
+      if (gameState.farmerBank === 'L') {
+        rowLabel.textContent = 'Row to East Bank (R)';
+        rowIcon.className = 'fa-solid fa-arrow-right';
+      } else {
+        rowLabel.textContent = 'Row to West Bank (L)';
+        rowIcon.className = 'fa-solid fa-arrow-left';
+      }
+
+      document.getElementById('btn-undo').disabled = gameState.history.length === 0 || gameState.isRowing;
+
+      // Update Current Step Explanation Card
+      const allSteps = [...SOLUTION_PATHS[gameState.activeBranch], ...SOLUTION_PATHS[gameState.activeBranch === 'A' ? 'B' : 'A']];
+      const matchStep = allSteps.find(s => s.state.join('') === curKey);
+      if (matchStep) {
+        document.getElementById('explain-step-badge').textContent = `BFS Depth ${matchStep.step} / 7`;
+        document.getElementById('explain-vector').textContent = `(${matchStep.state.join(', ')})`;
+        document.getElementById('explain-title').textContent = matchStep.title;
+        document.getElementById('explain-body').textContent = matchStep.desc;
+      }
+
+      renderStepsTimeline();
+      renderDAGVisualizer();
+      renderQueueAndPredicates();
+    }
+
+    /* ============================================================================
+       8. PANEL TABS, CAMERA PRESETS & RENDER LOOP
+       ============================================================================ */
+    function switchLabTab(tabName) {
+      ['walkthrough', 'graph', 'queue'].forEach(t => {
+        document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tabName);
+        const btn = document.getElementById(`tab-btn-${t}`);
+        btn.className = t === tabName
+          ? 'py-1.5 rounded-[4px] bg-elevated text-white shadow-sm transition-all'
+          : 'py-1.5 rounded-[4px] text-gray-400 hover:text-gray-200 transition-all';
+      });
+    }
+
+    let labOpen = true;
+    function toggleLabPanel() {
+      labOpen = !labOpen;
+      const panel = document.getElementById('lab-panel');
+      const text = document.getElementById('lab-toggle-text');
+      if (labOpen) {
+        panel.classList.remove('translate-x-[110%]');
+        text.textContent = 'Hide Lab';
+      } else {
+        panel.classList.add('translate-x-[110%]');
+        text.textContent = 'Show Lab';
+      }
+    }
+
+    function setCameraView(preset) {
+      ['cinematic', 'side', 'top'].forEach(p => {
+        const btn = document.getElementById(`cam-${p}`);
+        if (btn) {
+          btn.className = p === preset
+            ? 'px-2 py-1 rounded-[5px] text-[11px] font-medium bg-white/10 text-white transition-colors'
+            : 'px-2 py-1 rounded-[5px] text-[11px] font-medium text-gray-400 hover:text-white transition-colors';
+        }
+      });
+
+      if (preset === 'cinematic') {
+        gsap.to(camera.position, { x: -4.5, y: 13.5, z: 24.5, duration: 1.1, ease: 'power2.inOut' });
+        controls.target.set(0, 0.8, 0);
+      } else if (preset === 'side') {
+        gsap.to(camera.position, { x: 0, y: 4.2, z: 21.5, duration: 1.1, ease: 'power2.inOut' });
+        controls.target.set(0, 0.8, 0);
+      } else if (preset === 'top') {
+        gsap.to(camera.position, { x: 0, y: 32, z: 0.5, duration: 1.1, ease: 'power2.inOut' });
+        controls.target.set(0, 0, 0);
+      }
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      // Multi-frequency water surface wave displacement
+      for (let i = 0; i < waterPosAttr.count; i++) {
+        const u = baseWaterVerts[i * 3];
+        const v = baseWaterVerts[i * 3 + 1];
+        const wave = Math.sin(u * 1.7 + t * 2.3) * 0.09 + Math.cos(v * 1.3 + t * 1.8) * 0.06;
+        waterPosAttr.setZ(i, baseWaterVerts[i * 3 + 2] + wave);
+      }
+      waterGeo.computeVertexNormals();
+      waterPosAttr.needsUpdate = true;
+
+      // Boat gentle buoyancy & character idle motion
+      if (!gameState.isRowing) {
+        boatGroup.position.y = Math.sin(t * 2.1) * 0.045;
+        boatGroup.rotation.z = Math.sin(t * 1.5) * 0.014;
+      }
+      if (foxMesh.userData.tail) {
+        foxMesh.userData.tail.rotation.z = Math.sin(t * 3.2) * 0.12;
+      }
+
+      // Wake ring expansion & fade
+      for (let i = wakeParticles.length - 1; i >= 0; i--) {
+        const wp = wakeParticles[i];
+        wp.age += 0.016;
+        wp.mesh.scale.multiplyScalar(1.024);
+        wp.mesh.material.opacity = Math.max(0, 0.55 * (1 - wp.age / 1.3));
+        if (wp.age > 1.3) {
+          scene.remove(wp.mesh);
+          wakeParticles.splice(i, 1);
+        }
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    window.onload = () => {
+      updateUI();
+      animate();
+    };
+  </script>
+</body>
+</html>
